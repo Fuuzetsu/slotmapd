@@ -21,6 +21,10 @@ use crate::{DefaultKey, Key, KeyData};
 // Can be occupied or vacant.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshDeserialize, borsh::BorshSerialize)
+)]
 struct Slot {
     // Even = vacant, odd = occupied.
     version: u32,
@@ -34,6 +38,10 @@ struct Slot {
 /// See [crate documentation](crate) for more details.
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshDeserialize, borsh::BorshSerialize)
+)]
 pub struct DenseSlotMap<K: Key, V> {
     keys: Vec<K>,
     values: Vec<V>,

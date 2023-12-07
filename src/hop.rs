@@ -31,6 +31,10 @@ use crate::{DefaultKey, Key, KeyData};
 // Metadata to maintain the freelist.
 #[derive(Clone, Copy, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshDeserialize, borsh::BorshSerialize)
+)]
 struct FreeListEntry {
     next: u32,
     prev: u32,

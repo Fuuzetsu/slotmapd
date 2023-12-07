@@ -1363,6 +1363,140 @@ mod serialize {
     }
 }
 
+#[cfg(feature = "borsh")]
+impl<T> borsh::BorshSerialize for Slot<T>
+where
+    T: borsh::BorshSerialize,
+{
+    fn serialize<W: borsh::io::Write>(&self, writer: &mut W) -> borsh::io::Result<()> {
+        let (t, next_free) = match self.get() {
+            Occupied(value) => (Some(value), 0),
+            Vacant(next_free) => (None, *next_free),
+        };
+        <Option<&T> as borsh::BorshSerialize>::serialize(&t, writer)?;
+        <u32 as borsh::BorshSerialize>::serialize(&self.version, writer)?;
+        <u32 as borsh::BorshSerialize>::serialize(&next_free, writer)
+    }
+}
+
+#[cfg(feature = "borsh")]
+impl<T> borsh::BorshDeserialize for Slot<T>
+where
+    T: borsh::BorshDeserialize,
+{
+    fn deserialize_reader<R: borsh::io::Read>(reader: &mut R) -> borsh::io::Result<Self> {
+        let t = <Option<T> as borsh::BorshDeserialize>::deserialize_reader(reader)?;
+        let version = <u32 as borsh::BorshDeserialize>::deserialize_reader(reader)?;
+        let next_free = <u32 as borsh::BorshDeserialize>::deserialize_reader(reader)?;
+        let occupied = version % 2 == 1;
+        if occupied ^ t.is_some() {
+            return Err(borsh::io::Error::new(
+                borsh::io::ErrorKind::InvalidData,
+                "inconsistent occupation in Slot",
+            ));
+        }
+
+        Ok(Self {
+            u: match t {
+                Some(value) => SlotUnion {
+                    value: ManuallyDrop::new(value),
+                },
+                None => SlotUnion { next_free },
+            },
+            version,
+        })
+    }
+}
+
+#[cfg(feature = "borsh")]
+impl<K, V> borsh::BorshSerialize for SlotMap<K, V>
+where
+    K: Key,
+    V: borsh::BorshSerialize,
+{
+    fn serialize<W: borsh::io::Write>(&self, writer: &mut W) -> borsh::io::Result<()> {
+        <u32 as borsh::BorshSerialize>::serialize(&self.free_head, writer)?;
+        <Vec<Slot<V>> as borsh::BorshSerialize>::serialize(&self.slots, writer)
+    }
+}
+
+#[cfg(feature = "borsh")]
+impl<K, V> borsh::BorshDeserialize for SlotMap<K, V>
+where
+    K: Key,
+    V: borsh::BorshDeserialize,
+{
+    fn deserialize_reader<R: borsh::io::Read>(reader: &mut R) -> borsh::io::Result<Self> {
+        let free_head = <u32 as borsh::BorshDeserialize>::deserialize_reader(reader)?;
+        let mut slots = <Vec<Slot<V>> as borsh::BorshDeserialize>::deserialize_reader(reader)?;
+        if slots.len() >= u32::max_value() as usize {
+            return Err(borsh::io::Error::new(
+                borsh::io::ErrorKind::InvalidData,
+                "too many slots",
+            ));
+        }
+
+        // Ensure the first slot exists and is empty for the sentinel.
+        if slots.get(0).map_or(true, |slot| slot.version % 2 == 1) {
+            return Err(borsh::io::Error::new(
+                borsh::io::ErrorKind::InvalidData,
+                "first slot not empty",
+            ));
+        }
+
+        slots[0].version = 0;
+        slots[0].u.next_free = 0;
+
+        let mut i = free_head;
+        let mut n_free = 0;
+
+        let mut loop_avoid = slots.len();
+
+        while (1..slots.len()).contains(&(i as usize)) {
+            if loop_avoid == 0 {
+                return Err(borsh::io::Error::new(
+                    borsh::io::ErrorKind::InvalidData,
+                    "loop in free list",
+                ));
+            }
+            loop_avoid -= 1;
+            n_free += 1;
+
+            let s = unsafe { slots.get_unchecked(i as usize) };
+            if s.occupied() {
+                return Err(borsh::io::Error::new(
+                    borsh::io::ErrorKind::InvalidData,
+                    "occupied slot in free list",
+                ));
+            }
+            unsafe {
+                i = s.u.next_free;
+            }
+        }
+
+        let mut num_elems: u32 = 0;
+        for slot in &slots[1..] {
+            if slot.occupied() {
+                num_elems += 1;
+            }
+        }
+
+        if (num_elems + n_free + 1) as usize != slots.len() {
+            return Err(borsh::io::Error::new(
+                borsh::io::ErrorKind::InvalidData,
+                "inconsistent occupancy",
+            ));
+        }
+
+        Ok(Self {
+            num_elems,
+            slots,
+            free_head,
+            _k: PhantomData,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::{HashMap, HashSet};

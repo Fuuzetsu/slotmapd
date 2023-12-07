@@ -213,6 +213,8 @@ extern crate alloc;
 // So our macros can refer to these.
 #[doc(hidden)]
 pub mod __impl {
+    #[cfg(feature = "borsh")]
+    pub use borsh;
     pub use core::convert::From;
     pub use core::result::Result;
     #[cfg(feature = "serde")]
@@ -262,6 +264,10 @@ impl<T> Slottable for T {}
 /// [`BTreeMap`](std::collections::BTreeMap), but the order of keys is
 /// unspecified.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshDeserialize, borsh::BorshSerialize)
+)]
 pub struct KeyData {
     idx: u32,
     version: NonZeroU32,
@@ -474,7 +480,8 @@ macro_rules! new_key_type {
             }
         }
 
-        $crate::__serialize_key!($name);
+        $crate::__serialize_serde!($name);
+        $crate::__serialize_borsh!($name);
 
         $crate::new_key_type!($($rest)*);
     };
@@ -485,7 +492,7 @@ macro_rules! new_key_type {
 #[cfg(feature = "serde")]
 #[doc(hidden)]
 #[macro_export]
-macro_rules! __serialize_key {
+macro_rules! __serialize_serde {
     ( $name:ty ) => {
         impl $crate::__impl::Serialize for $name {
             fn serialize<S>(&self, serializer: S) -> $crate::__impl::Result<S::Ok, S::Error>
@@ -512,7 +519,40 @@ macro_rules! __serialize_key {
 #[cfg(not(feature = "serde"))]
 #[doc(hidden)]
 #[macro_export]
-macro_rules! __serialize_key {
+macro_rules! __serialize_serde {
+    ( $name:ty ) => {};
+}
+
+#[cfg(feature = "borsh")]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __serialize_borsh {
+    ( $name:ty ) => {
+        impl $crate::__impl::borsh::BorshSerialize for $name {
+            fn serialize<W: $crate::__impl::borsh::io::Write>(
+                &self,
+                writer: &mut W,
+            ) -> ::core::result::Result<(), $crate::__impl::borsh::io::Error> {
+                $crate::__impl::borsh::BorshSerialize::serialize(&$crate::Key::data(self), writer)
+            }
+        }
+
+        impl $crate::__impl::borsh::BorshDeserialize for $name {
+            fn deserialize_reader<R: $crate::__impl::borsh::io::Read>(
+                reader: &mut R,
+            ) -> ::core::result::Result<Self, $crate::__impl::borsh::io::Error> {
+                let key_data: $crate::KeyData =
+                    $crate::__impl::borsh::BorshDeserialize::deserialize_reader(reader)?;
+                Ok(key_data.into())
+            }
+        }
+    };
+}
+
+#[cfg(not(feature = "borsh"))]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __serialize_borsh {
     ( $name:ty ) => {};
 }
 

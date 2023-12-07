@@ -13,6 +13,10 @@ use crate::util::{is_older_version, UnwrapUnchecked};
 
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshDeserialize, borsh::BorshSerialize)
+)]
 struct Slot<T> {
     version: u32,
     value: T,
@@ -68,6 +72,10 @@ struct Slot<T> {
 
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshDeserialize, borsh::BorshSerialize)
+)]
 pub struct SparseSecondaryMap<K: Key, V> {
     slots: BTreeMap<u32, Slot<V>>,
     _k: PhantomData<fn(K) -> K>,
