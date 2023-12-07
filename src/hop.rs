@@ -124,7 +124,7 @@ impl<T: Clone> Clone for Slot<T> {
                 self.u = SlotUnion {
                     value: ManuallyDrop::new(value.clone()),
                 }
-            },
+            }
             (_, Vacant(&free)) => self.u = SlotUnion { free },
         }
         self.version = source.version;
@@ -364,7 +364,10 @@ impl<K: Key, V> HopSlotMap<K, V> {
     /// ```
     #[inline(always)]
     pub fn insert(&mut self, value: V) -> K {
-        unsafe { self.try_insert_with_key::<_, Never>(move |_| Ok(value)).unwrap_unchecked_() }
+        unsafe {
+            self.try_insert_with_key::<_, Never>(move |_| Ok(value))
+                .unwrap_unchecked_()
+        }
     }
 
     // Helper function to make using the freelist painless.
@@ -396,7 +399,10 @@ impl<K: Key, V> HopSlotMap<K, V> {
     where
         F: FnOnce(K) -> V,
     {
-        unsafe { self.try_insert_with_key::<_, Never>(move |k| Ok(f(k))).unwrap_unchecked_() }
+        unsafe {
+            self.try_insert_with_key::<_, Never>(move |k| Ok(f(k)))
+                .unwrap_unchecked_()
+        }
     }
 
     /// Inserts a value given by `f` into the slot map. The key where the
@@ -512,7 +518,7 @@ impl<K: Key, V> HopSlotMap<K, V> {
                     next: 0,
                     prev: old_tail,
                 };
-            },
+            }
 
             (false, true) => {
                 // Prepend to vacant block on right.
@@ -523,14 +529,14 @@ impl<K: Key, V> HopSlotMap<K, V> {
                 self.freelist(front_data.prev).next = i;
                 self.freelist(front_data.next).prev = i;
                 *self.freelist(i) = front_data;
-            },
+            }
 
             (true, false) => {
                 // Append to vacant block on left.
                 let front = self.freelist(i - 1).other_end;
                 self.freelist(i).other_end = front;
                 self.freelist(front).other_end = i;
-            },
+            }
 
             (true, true) => {
                 // We must merge left and right.
@@ -544,7 +550,7 @@ impl<K: Key, V> HopSlotMap<K, V> {
                 let back = right.other_end;
                 self.freelist(front).other_end = back;
                 self.freelist(back).other_end = front;
-            },
+            }
         }
 
         self.num_elems -= 1;
@@ -759,7 +765,11 @@ impl<K: Key, V> HopSlotMap<K, V> {
     /// ```
     pub unsafe fn get_unchecked_mut(&mut self, key: K) -> &mut V {
         debug_assert!(self.contains_key(key));
-        &mut self.slots.get_unchecked_mut(key.data().idx as usize).u.value
+        &mut self
+            .slots
+            .get_unchecked_mut(key.data().idx as usize)
+            .u
+            .value
     }
 
     /// Returns mutable references to the values corresponding to the given
@@ -1138,7 +1148,9 @@ impl<'a, K: Key, V> Iterator for Drain<'a, K, V> {
             None => 0,
         };
 
-        let key = KeyData::new(idx as u32, unsafe { self.sm.slots.get_unchecked(idx).version });
+        let key = KeyData::new(idx as u32, unsafe {
+            self.sm.slots.get_unchecked(idx).version
+        });
         Some((key.into(), unsafe { self.sm.remove_from_slot(idx) }))
     }
 
@@ -1170,7 +1182,7 @@ impl<K: Key, V> Iterator for IntoIter<K, V> {
                     return None;
                 }
                 idx
-            },
+            }
         };
 
         self.cur = idx + 1;
@@ -1230,7 +1242,7 @@ impl<'a, K: Key, V> Iterator for IterMut<'a, K, V> {
                     return None;
                 }
                 idx
-            },
+            }
         };
 
         self.cur = idx + 1;
@@ -1390,9 +1402,7 @@ mod serialize {
                     SerdeValue::O(value) => SlotUnion {
                         value: ManuallyDrop::new(value),
                     },
-                    SerdeValue::F(free) => SlotUnion {
-                        free,
-                    },
+                    SerdeValue::F(free) => SlotUnion { free },
                 },
                 version: serde_slot.version,
             })
@@ -1433,7 +1443,9 @@ mod serialize {
             // go through block chain, check consistency and count free slots
             loop {
                 if loop_avoid == 0 {
-                    return Err(de::Error::custom(&"loop in block chain not starting/ending at zero"));
+                    return Err(de::Error::custom(
+                        &"loop in block chain not starting/ending at zero",
+                    ));
                 }
                 loop_avoid -= 1;
 
@@ -1441,7 +1453,9 @@ mod serialize {
                 if let Some(Vacant(f)) = slots.get(next_block as usize).map(Slot::get) {
                     fl = *f
                 } else {
-                    return Err(de::Error::custom(&"next pointing to non-existent or occupied"));
+                    return Err(de::Error::custom(
+                        &"next pointing to non-existent or occupied",
+                    ));
                 }
 
                 if next_block != 0 && fl.prev != prev {
@@ -1461,7 +1475,7 @@ mod serialize {
 
                 next_block = fl.next;
                 if next_block == 0 {
-                    break
+                    break;
                 }
             }
 
@@ -1487,7 +1501,7 @@ mod serialize {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::{HashSet, HashMap};
+    use std::collections::{HashMap, HashSet};
 
     use quickcheck::{quickcheck, TestResult};
 
